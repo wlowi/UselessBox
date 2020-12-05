@@ -78,11 +78,11 @@ static int speedIndex[4] {
  *
  * DO NOT FORGET TO TERMINATE EVERY SEQUENCE WITH "END"
  */
-static byte moveAggressive[] = { DOOR( 10, FAST), FINGER( 15, FAST), FINGER( 0, FAST), DOOR( 0, WARP), END };
+static byte moveAggressive[] = { DOOR( 10, FAST), FINGER( 15, FAST), WAIT( 1), FINGER( 0, FAST), DOOR( 0, WARP), END };
 static byte moveNormal[] = { DOOR( 15, NORMAL), FINGER( 15, FAST), WAIT( 2), FINGER( 0, FAST), DOOR( 0, WARP), END };
-static byte moveShy[] = { DOOR( 8, SLOW), WAIT( 15), DOOR( 0, FAST), WAIT( 5), DOOR( 10, FAST), FINGER( 15, FAST), FINGER( 0, WARP), DOOR( 0, WARP), END };
-static byte moveSeq4[] = { DOOR( 15, NORMAL), FINGER( 10, SLOW), WAIT( 5), FINGER( 15, WARP), FINGER( 10, WARP), WAIT( 10), FINGER(0, NORMAL), DOOR( 0, WARP), END };
-static byte moveSeq5[] = { DOOR( 15, NORMAL), FINGER( 10, SLOW), WAIT( 5), FINGER( 15, WARP), FINGER( 0, WARP), DOOR( 0, WARP), END };
+static byte moveShy[] = { DOOR( 8, SLOW), WAIT( 15), DOOR( 0, FAST), WAIT( 5), DOOR( 10, FAST), FINGER( 15, FAST), WAIT( 1), FINGER( 0, WARP), DOOR( 0, WARP), END };
+static byte moveSeq4[] = { DOOR( 15, NORMAL), FINGER( 10, SLOW), WAIT( 5), FINGER( 15, WARP), WAIT( 1), FINGER( 10, WARP), WAIT( 10), FINGER(0, NORMAL), DOOR( 0, WARP), END };
+static byte moveSeq5[] = { DOOR( 15, NORMAL), FINGER( 10, SLOW), WAIT( 5), FINGER( 15, WARP), WAIT( 1), FINGER( 0, WARP), DOOR( 0, WARP), END };
 
 /* The list of move sequences to be used in a random order. */
 static byte *moveSequences[] = {
@@ -130,8 +130,8 @@ typedef struct servostruct_t {
 
 #define SERVO_MID_POS_usec  ((int)1500)
 
-/* Might need to set this to 20 for slow analog servos */
-#define SERVO_FRAME_msec    ((int)11)
+/* May set this to 11 for fast digital servos */
+#define SERVO_FRAME_msec    ((int)20)
 
 
 /***** global variables ************************/
