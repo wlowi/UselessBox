@@ -1,6 +1,7 @@
 /*
  * UselessBox - A useless box.
  *
+ * 07-12-2020 - V0.9.3, Idle clap
  * 02-12-2020 - V0.9.2, changed servo frame time handling
  * 20-11-2020 - V0.9.1, added immediate response
  * 29-11-2020 - V0.9, basically working
@@ -11,10 +12,6 @@
 
 /* Dump some stuff to Serial if this is defined. */
 #undef DEBUG_ON
-
-/* Use millis() instead of random() */
-#define USE_MILLIS_AS_RANDOM
-
 
 /* Arduino pins */
 #define DOOR_PIN    ((byte) 9)
@@ -84,6 +81,13 @@ static byte moveShy[] = { DOOR( 8, SLOW), WAIT( 15), DOOR( 0, FAST), WAIT( 5), D
 static byte moveSeq4[] = { DOOR( 15, NORMAL), FINGER( 10, SLOW), WAIT( 5), FINGER( 15, WARP), WAIT( 1), FINGER( 10, WARP), WAIT( 10), FINGER(0, NORMAL), DOOR( 0, WARP), END };
 static byte moveSeq5[] = { DOOR( 15, NORMAL), FINGER( 10, SLOW), WAIT( 5), FINGER( 15, WARP), WAIT( 1), FINGER( 0, WARP), DOOR( 0, WARP), END };
 
+/* Switch yourself off after this time */
+#define IDLE_TIMEOUT_msec ((long)60000)
+/* Do not clap right after movement */
+#define QUIET_TIME_msec   ((long)15000)
+
+static byte moveClap3[] = { DOOR( 5, FAST), DOOR( 0, FAST), DOOR( 5, FAST), DOOR( 0, FAST), DOOR( 5, FAST), DOOR( 0, FAST), END };
+
 /* The list of move sequences to be used in a random order. */
 static byte *moveSequences[] = {
   moveAggressive,
@@ -139,7 +143,8 @@ typedef struct servostruct_t {
 servostruct_t door;
 servostruct_t finger;
 config_t configuration;
-
+unsigned long lastMove = 0L;
+unsigned long nextClap = 0L;
 
 /***********************************************/
 
@@ -155,9 +160,7 @@ void setup() {
   pinMode( UP_PIN, INPUT_PULLUP);
   pinMode( DOWN_PIN, INPUT_PULLUP);
 
-#ifndef USE_MILLIS_AS_RANDOM
   randomSeed(analogRead(0));
-#endif
 
   initServo( door, DOOR_PIN);
   initServo( finger, FINGER_PIN);
@@ -180,10 +183,13 @@ void setup() {
   configServo( finger,
                configuration.finger_minPos,
                configuration.finger_maxPos);
+
+  lastMove = millis();
+  nextClap = lastMove + QUIET_TIME_msec + random(IDLE_TIMEOUT_msec-QUIET_TIME_msec);
 }
 
 void loop() {
-
+  
   /* If the config key is pressed force a manual configuration
    * and store it on EEPROM.
    */
@@ -202,11 +208,7 @@ void loop() {
 
   if ( SWITCH_ON) {
 
-#ifdef USE_MILLIS_AS_RANDOM
-    byte rnd = (byte)millis();
-#else
     byte rnd = (byte)random(255);
-#endif
 
     byte sequenceCount = sizeof(moveSequences)/sizeof(byte*);
     rnd %= sequenceCount;
@@ -219,6 +221,15 @@ void loop() {
 #endif
 
     react( moveSequences[rnd]);
+    lastMove = millis();
+    nextClap = lastMove + QUIET_TIME_msec + random(IDLE_TIMEOUT_msec-QUIET_TIME_msec);
+    
+  } else if( millis() > nextClap ){
+
+    react( moveClap3);
+    lastMove = millis();
+    nextClap = lastMove + QUIET_TIME_msec + random(IDLE_TIMEOUT_msec-QUIET_TIME_msec);
+    
   }
 }
 
