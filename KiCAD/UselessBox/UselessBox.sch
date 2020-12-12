@@ -1,6 +1,5 @@
 EESchema Schematic File Version 4
-LIBS:UselessBox-cache
-EELAYER 26 0
+EELAYER 30 0
 EELAYER END
 $Descr A4 11693 8268
 encoding utf-8
@@ -15,7 +14,7 @@ Comment3 ""
 Comment4 ""
 $EndDescr
 $Comp
-L MCU_Module:Arduino_Nano_v3.x A1
+L UselessBox-rescue:Arduino_Nano_v3.x-MCU_Module A1
 U 1 1 5FD0EDD7
 P 3950 3500
 F 0 "A1" H 4600 2350 50  0000 C CNN
@@ -86,7 +85,7 @@ U 1 1 5FD13A7C
 P 5450 2500
 F 0 "C1" H 5550 2550 50  0000 L CNN
 F 1 "CP" H 5568 2455 50  0000 L CNN
-F 2 "Capacitor_THT:CP_Radial_D12.5mm_P5.00mm" H 5488 2350 50  0001 C CNN
+F 2 "Capacitor_THT:CP_Radial_D8.0mm_P5.00mm" H 5488 2350 50  0001 C CNN
 F 3 "~" H 5450 2500 50  0001 C CNN
 	1    5450 2500
 	1    0    0    -1  
