@@ -7,7 +7,7 @@
       "Application": "Pcbnew",
       "Version":     "5.1.8-db9833491~88~ubuntu18.04.1"
     },
-    "CreationDate":  "2020-12-12T18:03:07+01:00"
+    "CreationDate":  "2020-12-13T17:35:25+01:00"
   },
   "GeneralSpecs":
   {
@@ -50,11 +50,6 @@
       "FilePolarity":  "Positive"
     },
     {
-      "Path":  "UselessBox-F_Paste.gbr",
-      "FileFunction":  "SolderPaste,Top",
-      "FilePolarity":  "Positive"
-    },
-    {
       "Path":  "UselessBox-F_SilkS.gbr",
       "FileFunction":  "Legend,Top",
       "FilePolarity":  "Positive"
@@ -80,10 +75,6 @@
     {
       "Type":  "Legend",
       "Notes":  "Layer F.SilkS"
-    },
-    {
-      "Type":  "SolderPaste",
-      "Notes":  "Layer F.Paste"
     },
     {
       "Type":  "SolderMask",
