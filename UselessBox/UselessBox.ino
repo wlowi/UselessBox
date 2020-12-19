@@ -2,6 +2,7 @@
  * UselessBox - A useless box by WOLFIX.
  *
  * 19-12-2020 - V0.9.6, Low battery voltage monitor.
+ *                      Some code refactoring.
  * 18-12-2020 - V0.9.5, Switch power off after 60 sec.
  * 16-12-2020 - V0.9.4, Couple of changes to moves
  * 07-12-2020 - V0.9.3, Idle clap 
@@ -15,6 +16,7 @@
 
 /* Dump some stuff to Serial if this is defined. */
 #undef DEBUG_ON
+#undef DEBUG_VDD
 
 /* Arduino pins */
 #define DOOR_PIN     ((byte) 9)
@@ -27,9 +29,9 @@
 #define UP_PIN       ((byte) 6)
 #define DOWN_PIN     ((byte) 5)
 
-/* All voltage values are *100 to 
- * retain 2 digits
- */
+#define RANDOM_INIT  (analogRead(A6) * analogRead(A7))
+
+/* All voltage values are *100 to retain 2 digits */
 #define VOLTAGE_PIN  A0
 /* ADC reference voltage 5.0 V */
 #define ADC_REF_V    (500)
@@ -37,13 +39,13 @@
 #define ADC_RES      (1024)
 
 /* VDD Power low limit.
- * Below this value the battery is considered empty.
+ * Below this voltage the battery is considered empty.
  * Default 7.2V
  */
 #define POWER_LOW_V  (720)
 
 /* Voltage divider resistors 18k and 9.9k 
- * Actually R2 is 10k but it is parallel with A0 input.
+ * Actually R2 is 10k but it is parallel to A0 input.
  * 
  * The actual values are irrelevant only the relation between 
  * them is relevant.
@@ -107,7 +109,7 @@ static int speedIndex[4] {
  * DO NOT FORGET TO TERMINATE EVERY SEQUENCE WITH "END"
  */
 static byte moveAggressive[] = {
-  DOOR( 10, FAST),
+  DOOR( 12, FAST),
   FINGER( 15, FAST), WAIT( 1), FINGER( 0, FAST),
   DOOR( 0, WARP), END
 };
@@ -120,8 +122,18 @@ static byte moveNormal[] = {
 
 static byte moveShy[] = {
   DOOR( 8, SLOW), WAIT( 15), DOOR( 0, FAST), WAIT( 5),
-  DOOR( 10, FAST),
+  DOOR( 12, FAST),
   FINGER( 15, FAST), WAIT( 1), FINGER( 0, WARP),
+  DOOR( 0, WARP), END
+};
+
+static byte moveShy2[] = {
+  DOOR( 8, SLOW), WAIT( 10), DOOR( 0, FAST), WAIT( 5),
+  DOOR( 12, NORMAL), WAIT( 3),
+  FINGER( 8, FAST), WAIT( 2),
+  FINGER( 11, NORMAL), WAIT( 2),
+  FINGER( 13, SLOW), WAIT( 2),
+  FINGER( 15, WARP), WAIT( 1), FINGER( 0, WARP),
   DOOR( 0, WARP), END
 };
 
@@ -150,12 +162,16 @@ static byte moveSeq6[] = {
 /* Switch yourself off after this time */
 #define IDLE_TIMEOUT_msec ((long)60000)
 /* Do not clap right after movement */
-#define QUIET_TIME_msec   ((long)10000)
+#define QUIET_TIME_msec   ((long)5000)
 
 static byte moveClap3[] = {
   DOOR( 5, FAST), DOOR( 0, FAST),
   DOOR( 5, FAST), DOOR( 0, FAST),
   DOOR( 5, FAST), DOOR( 0, FAST), END
+};
+
+static byte movePeek[] = {
+  DOOR( 8, SLOW), WAIT( 10), DOOR( 0, FAST), END
 };
 
 /* This indicates low battery voltage */
@@ -172,11 +188,17 @@ static byte *moveSequences[] = {
   moveAggressive,
   moveNormal,
   moveShy,
+  moveShy2,
   moveSeq4,
   moveSeq5,
   moveSeq6
 };
 
+/* The list of move sequences when idle (after some timeout). */
+static byte *idleSequences[] = {
+  moveClap3,
+  movePeek
+};
 
 /* Configuration stored in EEPROM.
  * Stores start and end positions of door and finger.
@@ -244,7 +266,7 @@ void setup() {
 
   power( ON);
 
-  randomSeed(analogRead(0));
+  randomSeed(RANDOM_INIT);
 
   initServo( door, DOOR_PIN);
   initServo( finger, FINGER_PIN);
@@ -258,21 +280,12 @@ void setup() {
     doConfig( configuration);
   }
 
-  /* Configure end positions for door and finger moves.  
-   */
-  configServo( door,
-               configuration.door_minPos,
-               configuration.door_maxPos);
-
-  configServo( finger,
-               configuration.finger_minPos,
-               configuration.finger_maxPos);
-
-  lastMove = millis();
-  nextClap = lastMove + QUIET_TIME_msec + random(IDLE_TIMEOUT_msec-QUIET_TIME_msec);
+  /* Configure end positions for door and finger moves. */
+  configureServos();
+  updateLastMove();
   powerOff = lastMove + IDLE_TIMEOUT_msec;
 
-  /* Check for low battery and clap 5 times */
+  /* Check for low battery and clap 5 times. */
   if( voltageVdd() < POWER_LOW_V) {
     react( moveClap5);
   }
@@ -286,51 +299,64 @@ void loop() {
   if ( keyPressed( CONFIG_PIN)) {
 
     doConfig( configuration);
-
-    configServo( door,
-                 configuration.door_minPos,
-                 configuration.door_maxPos);
-
-    configServo( finger,
-                 configuration.finger_minPos,
-                 configuration.finger_maxPos);
+    configureServos();
   }
 
 #ifdef DEBUG_ON
+#ifdef DEBUG_VDD
   int vdd = voltageVdd();
   Serial.print("VDD ");
   Serial.println(vdd);
 #endif
+#endif
 
   if ( IS_SWITCH_ON) {
 
-    byte rnd = (byte)random(255);
-
-    byte sequenceCount = sizeof(moveSequences)/sizeof(byte*);
-    rnd %= sequenceCount;
-
-#ifdef DEBUG_ON
-    Serial.print("cnt ");
-    Serial.print(sequenceCount);
-    Serial.print(" rnd ");
-    Serial.println(rnd);
-#endif
-
-    react( moveSequences[rnd]);
-    lastMove = millis();
-    nextClap = lastMove + QUIET_TIME_msec + random(IDLE_TIMEOUT_msec-QUIET_TIME_msec);
+    randomReact( moveSequences, sizeof(moveSequences));
+    updateLastMove();
     powerOff = lastMove + IDLE_TIMEOUT_msec;
     
   } else if( millis() > nextClap ){
 
-    react( moveClap3);
-    lastMove = millis();
-    nextClap = lastMove + QUIET_TIME_msec + random(IDLE_TIMEOUT_msec-QUIET_TIME_msec);
+    randomReact( idleSequences, sizeof(idleSequences));
+    updateLastMove();
     
   } else if( millis() > powerOff ) {
 
     power( OFF);
   }
+}
+
+/* Reconfigure all servos.
+ */
+static void configureServos() {
+
+  configServo( door,
+               configuration.door_minPos,
+               configuration.door_maxPos);
+
+  configServo( finger,
+               configuration.finger_minPos,
+               configuration.finger_maxPos);
+}
+
+
+/* Select a random move sequence.
+ */
+static void randomReact( byte *moveSeq[], size_t seqSize) {
+  
+  byte rnd = (byte)random(255);
+  byte sequenceCount = seqSize/sizeof(byte*);
+  rnd %= sequenceCount;
+
+#ifdef DEBUG_ON
+  Serial.print("cnt ");
+  Serial.print(sequenceCount);
+  Serial.print(" rnd ");
+  Serial.println(rnd);
+#endif
+
+  react( moveSeq[rnd]);
 }
 
 /* React when the switch gets flipped to ON state 
@@ -372,6 +398,21 @@ static void react( byte seq[]) {
   }
 }
 
+/* Remember time of last move (current time)
+ * and update next clap time (idle time).
+ */
+static void updateLastMove() {
+
+  lastMove = millis();
+  long randomTime = QUIET_TIME_msec + random(IDLE_TIMEOUT_msec-QUIET_TIME_msec);
+  nextClap = lastMove + randomTime;
+
+#ifdef DEBUG_ON
+  Serial.print("idle ");
+  Serial.println(randomTime);
+#endif
+}
+
 /* Wait until the previous servo frame time has passed,
  * then set new servo timing value.
  */
@@ -385,7 +426,9 @@ static void writeServo( servostruct_t &s, int time_usec) {
   
   s.servo.writeMicroseconds( time_usec);
 
-  /* @TODO: This rolls over after about 50 days */
+  /* @TODO: This rolls over after about 50 days.
+   * Rather academic :)
+   */
   s.nextFrame_msec = now + SERVO_FRAME_msec;
 }
 
@@ -446,6 +489,10 @@ static void flash( byte howOften, int howLong) {
   }
 }
 
+/* Config switch decoding.
+ * With long debounce timeouts...
+ * Should also work if you just connect two wires by hand.
+ */
 static boolean keyPressed( byte pin) {
 
   if ( !digitalRead(pin)) {
