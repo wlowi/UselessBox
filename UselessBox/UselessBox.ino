@@ -1,7 +1,10 @@
 /*
- * UselessBox - A useless box.
+ * UselessBox - A useless box by WOLFIX.
  *
- * 07-12-2020 - V0.9.3, Idle clap
+ * 19-12-2020 - V0.9.6, Low battery voltage monitor.
+ * 18-12-2020 - V0.9.5, Switch power off after 60 sec.
+ * 16-12-2020 - V0.9.4, Couple of changes to moves
+ * 07-12-2020 - V0.9.3, Idle clap 
  * 02-12-2020 - V0.9.2, changed servo frame time handling
  * 20-11-2020 - V0.9.1, added immediate response
  * 29-11-2020 - V0.9, basically working
@@ -14,19 +17,47 @@
 #undef DEBUG_ON
 
 /* Arduino pins */
-#define DOOR_PIN    ((byte) 9)
-#define FINGER_PIN  ((byte)10)
-#define LED_PIN     ((byte)13)
-#define SWITCH_PIN  ((byte) 8)
+#define DOOR_PIN     ((byte) 9)
+#define FINGER_PIN   ((byte)10)
+#define LED_PIN      ((byte)13)
+#define SWITCH_PIN   ((byte) 8)
+#define POWER_PIN    ((byte) 4)
 
-#define CONFIG_PIN  ((byte) 7)
-#define UP_PIN      ((byte) 6)
-#define DOWN_PIN    ((byte) 5)
+#define CONFIG_PIN   ((byte) 7)
+#define UP_PIN       ((byte) 6)
+#define DOWN_PIN     ((byte) 5)
+
+/* All voltage values are *100 to 
+ * retain 2 digits
+ */
+#define VOLTAGE_PIN  A0
+/* ADC reference voltage 5.0 V */
+#define ADC_REF_V    (500)
+/* ADC resolution 0 - 1023 */
+#define ADC_RES      (1024)
+
+/* VDD Power low limit.
+ * Below this value the battery is considered empty.
+ * Default 7.2V
+ */
+#define POWER_LOW_V  (720)
+
+/* Voltage divider resistors 18k and 9.9k 
+ * Actually R2 is 10k but it is parallel with A0 input.
+ * 
+ * The actual values are irrelevant only the relation between 
+ * them is relevant.
+ */
+#define V_DIVIDER_R1 (180)
+#define V_DIVIDER_R2 ( 99)
 
 /* Determine switch state */
-#define SWITCH_ON   (switchOn( SWITCH_PIN))
-#define SWITCH_OFF  (!SWITCH_ON)
+#define IS_SWITCH_ON  (isSwitchOn( SWITCH_PIN))
+#define IS_SWITCH_OFF (!IS_SWITCH_ON)
 
+/* Power states */
+#define ON          (true)
+#define OFF         (false)
 
 /* Response commands */
 #define C_END       ((byte) 0)
@@ -75,18 +106,66 @@ static int speedIndex[4] {
  *
  * DO NOT FORGET TO TERMINATE EVERY SEQUENCE WITH "END"
  */
-static byte moveAggressive[] = { DOOR( 10, FAST), FINGER( 15, FAST), WAIT( 1), FINGER( 0, FAST), DOOR( 0, WARP), END };
-static byte moveNormal[] = { DOOR( 15, NORMAL), FINGER( 15, FAST), WAIT( 2), FINGER( 0, FAST), DOOR( 0, WARP), END };
-static byte moveShy[] = { DOOR( 8, SLOW), WAIT( 15), DOOR( 0, FAST), WAIT( 5), DOOR( 10, FAST), FINGER( 15, FAST), WAIT( 1), FINGER( 0, WARP), DOOR( 0, WARP), END };
-static byte moveSeq4[] = { DOOR( 15, NORMAL), FINGER( 10, SLOW), WAIT( 5), FINGER( 15, WARP), WAIT( 1), FINGER( 10, WARP), WAIT( 10), FINGER(0, NORMAL), DOOR( 0, WARP), END };
-static byte moveSeq5[] = { DOOR( 15, NORMAL), FINGER( 10, SLOW), WAIT( 5), FINGER( 15, WARP), WAIT( 1), FINGER( 0, WARP), DOOR( 0, WARP), END };
+static byte moveAggressive[] = {
+  DOOR( 10, FAST),
+  FINGER( 15, FAST), WAIT( 1), FINGER( 0, FAST),
+  DOOR( 0, WARP), END
+};
+
+static byte moveNormal[] = {
+  DOOR( 15, NORMAL),
+  FINGER( 15, NORMAL), WAIT( 2), FINGER( 0, FAST),
+  DOOR( 0, WARP), END
+};
+
+static byte moveShy[] = {
+  DOOR( 8, SLOW), WAIT( 15), DOOR( 0, FAST), WAIT( 5),
+  DOOR( 10, FAST),
+  FINGER( 15, FAST), WAIT( 1), FINGER( 0, WARP),
+  DOOR( 0, WARP), END
+};
+
+static byte moveSeq4[] = {
+  DOOR( 15, NORMAL),
+  FINGER( 10, SLOW), WAIT( 5), FINGER( 15, WARP), WAIT( 1), FINGER( 10, WARP), WAIT( 10), FINGER(0, NORMAL),
+  DOOR( 0, WARP), END
+};
+
+static byte moveSeq5[] = {
+  DOOR( 15, NORMAL),
+  FINGER( 10, SLOW), WAIT( 5), FINGER( 15, WARP), WAIT( 1), FINGER( 0, WARP),
+  DOOR( 0, WARP), END
+};
+
+static byte moveSeq6[] = {
+  DOOR( 15, NORMAL),
+  FINGER( 10, NORMAL), WAIT( 3),
+  FINGER( 12, WARP), WAIT( 1), FINGER( 10, WARP), WAIT( 1),
+  FINGER( 12, WARP), WAIT( 1), FINGER( 10, WARP), WAIT( 1),
+  FINGER( 12, WARP), WAIT( 1), FINGER( 10, WARP), WAIT( 3),
+  FINGER( 15, WARP), WAIT( 1), FINGER( 0, WARP),
+  DOOR( 0, WARP), END
+};
 
 /* Switch yourself off after this time */
 #define IDLE_TIMEOUT_msec ((long)60000)
 /* Do not clap right after movement */
-#define QUIET_TIME_msec   ((long)15000)
+#define QUIET_TIME_msec   ((long)10000)
 
-static byte moveClap3[] = { DOOR( 5, FAST), DOOR( 0, FAST), DOOR( 5, FAST), DOOR( 0, FAST), DOOR( 5, FAST), DOOR( 0, FAST), END };
+static byte moveClap3[] = {
+  DOOR( 5, FAST), DOOR( 0, FAST),
+  DOOR( 5, FAST), DOOR( 0, FAST),
+  DOOR( 5, FAST), DOOR( 0, FAST), END
+};
+
+/* This indicates low battery voltage */
+static byte moveClap5[] = {
+  DOOR( 5, FAST), DOOR( 0, FAST),
+  DOOR( 5, FAST), DOOR( 0, FAST),
+  DOOR( 5, FAST), DOOR( 0, FAST),
+  DOOR( 5, FAST), DOOR( 0, FAST),
+  DOOR( 5, FAST), DOOR( 0, FAST), END
+};
 
 /* The list of move sequences to be used in a random order. */
 static byte *moveSequences[] = {
@@ -94,7 +173,8 @@ static byte *moveSequences[] = {
   moveNormal,
   moveShy,
   moveSeq4,
-  moveSeq5
+  moveSeq5,
+  moveSeq6
 };
 
 
@@ -145,6 +225,7 @@ servostruct_t finger;
 config_t configuration;
 unsigned long lastMove = 0L;
 unsigned long nextClap = 0L;
+unsigned long powerOff = 0L;
 
 /***********************************************/
 
@@ -155,10 +236,13 @@ void setup() {
 #endif
 
   pinMode( LED_PIN, OUTPUT);
+  pinMode( POWER_PIN, OUTPUT);
   pinMode( SWITCH_PIN, INPUT_PULLUP);
   pinMode( CONFIG_PIN, INPUT_PULLUP);
   pinMode( UP_PIN, INPUT_PULLUP);
   pinMode( DOWN_PIN, INPUT_PULLUP);
+
+  power( ON);
 
   randomSeed(analogRead(0));
 
@@ -186,6 +270,12 @@ void setup() {
 
   lastMove = millis();
   nextClap = lastMove + QUIET_TIME_msec + random(IDLE_TIMEOUT_msec-QUIET_TIME_msec);
+  powerOff = lastMove + IDLE_TIMEOUT_msec;
+
+  /* Check for low battery and clap 5 times */
+  if( voltageVdd() < POWER_LOW_V) {
+    react( moveClap5);
+  }
 }
 
 void loop() {
@@ -206,7 +296,13 @@ void loop() {
                  configuration.finger_maxPos);
   }
 
-  if ( SWITCH_ON) {
+#ifdef DEBUG_ON
+  int vdd = voltageVdd();
+  Serial.print("VDD ");
+  Serial.println(vdd);
+#endif
+
+  if ( IS_SWITCH_ON) {
 
     byte rnd = (byte)random(255);
 
@@ -223,6 +319,7 @@ void loop() {
     react( moveSequences[rnd]);
     lastMove = millis();
     nextClap = lastMove + QUIET_TIME_msec + random(IDLE_TIMEOUT_msec-QUIET_TIME_msec);
+    powerOff = lastMove + IDLE_TIMEOUT_msec;
     
   } else if( millis() > nextClap ){
 
@@ -230,6 +327,9 @@ void loop() {
     lastMove = millis();
     nextClap = lastMove + QUIET_TIME_msec + random(IDLE_TIMEOUT_msec-QUIET_TIME_msec);
     
+  } else if( millis() > powerOff ) {
+
+    power( OFF);
   }
 }
 
@@ -298,13 +398,13 @@ static boolean moveServo( servostruct_t &s, byte newPos, byte howFast) {
   int usecPerStep = (delta_usec < 0) ? -speedIndex[howFast] : speedIndex[howFast];
   int steps = delta_usec / usecPerStep;
 
-  boolean switchWasOff = SWITCH_OFF;
+  boolean switchWasOff = IS_SWITCH_OFF;
 
   for (int i = 0; i < steps; i++) {
     s.curPos += usecPerStep;
     writeServo( s, s.curPos);
 
-    if ( switchWasOff && SWITCH_ON) {
+    if ( switchWasOff && IS_SWITCH_ON) {
       return true;
     }
   }
@@ -364,7 +464,7 @@ static boolean keyPressed( byte pin) {
  * Wait until we see the same state 5 times in a row.
  * This function takes at least 5 milliseconds.
  */
-static boolean switchOn( byte pin) {
+static boolean isSwitchOn( byte pin) {
 
   boolean state = false;
   byte count = 0;
@@ -380,6 +480,29 @@ static boolean switchOn( byte pin) {
   }
 
   return state;
+}
+
+/* Switch power relais on or off 
+ */
+static void power( boolean state) {
+
+  digitalWrite( POWER_PIN, state);
+}
+
+/* Returns VDD Power-IN *100 to retain 2 digits.
+ * 820 => 8.20 volt
+ */
+static int voltageVdd() {
+
+  long v = ((long)analogRead( VOLTAGE_PIN));
+
+  /* ADC value to voltage */
+  v = v  * ADC_REF_V / ADC_RES;
+
+  /* Compute original voltage bevore voltage divider */
+  v = v * (V_DIVIDER_R1 + V_DIVIDER_R2) / V_DIVIDER_R2;
+
+  return (int)v;
 }
 
 static void doConfig( config_t &cfg) {
