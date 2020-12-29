@@ -1,14 +1,38 @@
 /*
+ * MIT License
+ *
+ * Copyright (c) 2020 Wolfgang Lohwasser
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *
+ *
  * UselessBox - A useless box by WOLFIX.
  *
+ * 29-12-2020 - V0.9.7, Sanitize servo timing in doConfig()
  * 19-12-2020 - V0.9.6, Low battery voltage monitor.
  *                      Some code refactoring.
  * 18-12-2020 - V0.9.5, Switch power off after 60 sec.
- * 16-12-2020 - V0.9.4, Couple of changes to moves
+ * 16-12-2020 - V0.9.4, Couple of changes to moves sequences.
  * 07-12-2020 - V0.9.3, Idle clap 
- * 02-12-2020 - V0.9.2, changed servo frame time handling
- * 20-11-2020 - V0.9.1, added immediate response
- * 29-11-2020 - V0.9, basically working
+ * 02-12-2020 - V0.9.2, Changed servo frame time handling
+ * 20-11-2020 - V0.9.1, Added immediate response
+ * 29-11-2020 - V0.9.0, Basically working
  */
 
 #include <Servo.h>
@@ -234,7 +258,9 @@ typedef struct servostruct_t {
 
 } servostruct_t;
 
+#define SERVO_MIN_POS_usec  ((int)1000)
 #define SERVO_MID_POS_usec  ((int)1500)
+#define SERVO_MAX_POS_usec  ((int)2000)
 
 /* May set this to 11 for fast digital servos */
 #define SERVO_FRAME_msec    ((int)20)
@@ -423,13 +449,43 @@ static void writeServo( servostruct_t &s, int time_usec) {
   if( now < s.nextFrame_msec) {
     delay( s.nextFrame_msec - now);
   }
-  
-  s.servo.writeMicroseconds( time_usec);
+
+  s.servo.writeMicroseconds( clipPos( time_usec));
 
   /* @TODO: This rolls over after about 50 days.
    * Rather academic :)
    */
   s.nextFrame_msec = now + SERVO_FRAME_msec;
+}
+
+/* Clip servo position
+ * to min/max values.
+ */
+static int clipPos( int time_usec) {
+  
+  if( time_usec < SERVO_MIN_POS_usec) {
+    time_usec = SERVO_MIN_POS_usec;
+  }
+  if( time_usec > SERVO_MAX_POS_usec) {
+    time_usec = SERVO_MAX_POS_usec;
+  }
+
+  return time_usec;
+}
+
+/* Sanitize servo position.
+ * Could be the case when EEPROM is uninitialized.
+ */
+static int sanitizePos( int time_usec) {
+  
+  if( time_usec < SERVO_MIN_POS_usec) {
+    time_usec = SERVO_MID_POS_usec;
+  }
+  if( time_usec > SERVO_MAX_POS_usec) {
+    time_usec = SERVO_MID_POS_usec;
+  }
+
+  return time_usec;
 }
 
 /* Move servo from current position to new position with a defined speed.
@@ -554,6 +610,10 @@ static int voltageVdd() {
 
 static void doConfig( config_t &cfg) {
 
+#ifdef DEBUG_ON
+  Serial.println("doConfig()");
+#endif
+
   while ( !keyPressed( CONFIG_PIN)) {
     writeServo( door, SERVO_MID_POS_usec);
     writeServo( finger, SERVO_MID_POS_usec);
@@ -577,16 +637,25 @@ static void doConfig( config_t &cfg) {
 
 static int kbdMove( servostruct_t &s, int pos) {
 
+  pos = sanitizePos( pos);
   writeServo( s, pos);
 
   while ( !keyPressed( CONFIG_PIN)) {
 
     if ( !digitalRead( DOWN_PIN)) {
       pos -= 1;
+#ifdef DEBUG_ON
+      Serial.print("servo ");
+      Serial.println(pos);
+#endif
       writeServo( s, pos);
 
     } else if ( !digitalRead( UP_PIN)) {
       pos += 1;
+#ifdef DEBUG_ON
+      Serial.print("servo ");
+      Serial.println(pos);
+#endif
       writeServo( s, pos);
     }
   }

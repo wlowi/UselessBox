@@ -1,5 +1,6 @@
 EESchema Schematic File Version 4
-EELAYER 30 0
+LIBS:UselessBox-cache
+EELAYER 26 0
 EELAYER END
 $Descr A4 11693 8268
 encoding utf-8
@@ -106,7 +107,7 @@ L Device:R R1
 U 1 1 5FD13C5B
 P 5100 3250
 F 0 "R1" H 5170 3296 50  0000 L CNN
-F 1 "10k" H 5170 3205 50  0000 L CNN
+F 1 "18k" H 5170 3205 50  0000 L CNN
 F 2 "Resistor_THT:R_Axial_DIN0204_L3.6mm_D1.6mm_P7.62mm_Horizontal" V 5030 3250 50  0001 C CNN
 F 3 "~" H 5100 3250 50  0001 C CNN
 	1    5100 3250
@@ -410,4 +411,10 @@ Wire Wire Line
 	3300 1500 3300 1450
 Wire Wire Line
 	3450 1550 5000 1550
+Text Notes 3000 1200 0    50   ~ 0
+A-A B-B
+Text Notes 4750 1200 0    50   ~ 0
+S  + GND
+Text Notes 5700 1200 0    50   ~ 0
+S  + GND
 $EndSCHEMATC
