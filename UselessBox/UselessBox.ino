@@ -24,6 +24,7 @@
  *
  * UselessBox - A useless box by WOLFIX.
  *
+ * 08-01-2021 - V0.9.8, Fix (Improve config responsiveness)
  * 29-12-2020 - V0.9.7, Sanitize servo timing in doConfig()
  * 19-12-2020 - V0.9.6, Low battery voltage monitor.
  *                      Some code refactoring.
@@ -80,6 +81,8 @@
 /* Determine switch state */
 #define IS_SWITCH_ON  (isSwitchOn( SWITCH_PIN))
 #define IS_SWITCH_OFF (!IS_SWITCH_ON)
+
+#define CHECK_CONFIG  (!digitalRead(CONFIG_PIN))
 
 /* Power states */
 #define ON          (true)
@@ -275,6 +278,12 @@ unsigned long lastMove = 0L;
 unsigned long nextClap = 0L;
 unsigned long powerOff = 0L;
 
+/* Global flag to indicate pending config.
+ * Helps to enter config mode while servos are
+ * mobing.
+ */
+boolean configPending = false;
+
 /***********************************************/
 
 void setup() {
@@ -302,7 +311,6 @@ void setup() {
    */
   readConfig( configuration);
   if ( !isConfigValid(configuration)) {
-    flash( 5, 100);
     doConfig( configuration);
   }
 
@@ -327,6 +335,8 @@ void loop() {
     doConfig( configuration);
     configureServos();
   }
+
+  configPending = false;
 
 #ifdef DEBUG_ON
 #ifdef DEBUG_VDD
@@ -417,6 +427,13 @@ static void react( byte seq[]) {
         break;
     }
 
+    if ( configPending) {
+      /* User wants to enter config mode. 
+       * Immediately stop processing current sequence and jump back.
+       */
+      break;
+    }
+
     if ( immediateReact) {
       index = 0;
       seq = moveAggressive;
@@ -502,6 +519,13 @@ static boolean moveServo( servostruct_t &s, byte newPos, byte howFast) {
   for (int i = 0; i < steps; i++) {
     s.curPos += usecPerStep;
     writeServo( s, s.curPos);
+
+    if ( CHECK_CONFIG) {
+      /* User signalled his wish to enter config mode.
+       */
+      configPending = true;
+      return false;
+    }
 
     if ( switchWasOff && IS_SWITCH_ON) {
       return true;
@@ -613,6 +637,8 @@ static void doConfig( config_t &cfg) {
 #ifdef DEBUG_ON
   Serial.println("doConfig()");
 #endif
+
+  flash( 1, 500);
 
   while ( !keyPressed( CONFIG_PIN)) {
     writeServo( door, SERVO_MID_POS_usec);
